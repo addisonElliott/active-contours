@@ -7,7 +7,7 @@ import scipy.interpolate
 
 
 def kassSnake(image, initialContour, edgeImage=None, alpha=0.01, beta=0.1, wLine=0, wEdge=1, gamma=0.01,
-              maxPixelMove=None, maxIterations=2500):
+              maxPixelMove=None, maxIterations=2500, convergence=0.1):
     maxIterations = int(maxIterations)
     if maxIterations <= 0:
         raise ValueError('maxIterations should be greater than 0.')
@@ -107,6 +107,7 @@ def kassSnake(image, initialContour, edgeImage=None, alpha=0.01, beta=0.1, wLine
     # Invert matrix once since alpha, beta and gamma are constants
     # See equation 19 and 20 in Appendix A of Kass's paper
     AInv = scipy.linalg.inv(A + gamma * np.eye(n))
+    # AInv = scipy.linalg.inv(gamma * A + np.eye(n))
 
     for i in range(maxIterations):
         # Calculate the gradient in the x/y direction of the external energy
@@ -130,7 +131,9 @@ def kassSnake(image, initialContour, edgeImage=None, alpha=0.01, beta=0.1, wLine
         # Compute new x and y contour
         # See Equation 19 and 20 in Appendix A of Kass's paper
         xNew = np.dot(AInv, gamma * x + fx)
+        # xNew = np.dot(AInv, x + gamma * fx)
         yNew = np.dot(AInv, gamma * y + fy)
+        # yNew = np.dot(AInv, y + gamma * fy)
 
         # Maximum pixel move sets a cap on the maximum amount of pixels that one step can take.
         # This is useful if one needs to prevent the snake from jumping past the location minimum one desires.
@@ -140,6 +143,7 @@ def kassSnake(image, initialContour, edgeImage=None, alpha=0.01, beta=0.1, wLine
         # Then get the angle of change and apply maxPixelMove magnitude
         # Otherwise, if no maximum pixel move is set then set the x/y to be xNew/yNew
         if maxPixelMove:
+            # print('test')
             dx = maxPixelMove * np.tanh(xNew - x)
             dy = maxPixelMove * np.tanh(yNew - y)
 
@@ -158,24 +162,19 @@ def kassSnake(image, initialContour, edgeImage=None, alpha=0.01, beta=0.1, wLine
         #     dy[-1] = 0
 
         # j is variable that loops around from 0 to the convergence order. This is used to save the previous value
-        # Every x values where x is the convergence order, the distance XXX TODO Finish this
+        # Convergence is reached when absolute value distance between previous values and current values is less
+        # than convergence threshold
+        # Note: Max on axis 1 and then min on the 0 axis for distance. Retrieves maximum distance from the contour
+        # for each trial, and then gets the minimum of the 10 trials.
         j = i % (convergenceOrder + 1)
 
         if j < convergenceOrder:
             previousX[j, :] = x
             previousY[j, :] = y
         else:
-            # np.abs(previousX - x[None, :]) + np.abs(previousY - y[None, :])
-            pass
+            distance = np.min(np.max(np.abs(previousX - x[None, :]) + np.abs(previousY - y[None, :]), axis=1))
 
-        # # Convergence criteria needs to compare to a number of previous
-        # # configurations since oscillations can occur.
-        # j = i % (convergence_order + 1)
-        # if j < convergence_order:
-        #     xsave[j, :] = x
-        #     ysave[j, :] = y
-        # else:
-        #     dist = np.min(np.max(np.abs(xsave - x[None, :]) +
-        #                          np.abs(ysave - y[None, :]), 1))
-        #     if dist < convergence:
-        #         break
+            if distance < convergence:
+                break
+
+    return np.array([x, y]).T
