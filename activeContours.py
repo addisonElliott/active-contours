@@ -3,6 +3,7 @@ import sys
 from PyQt5.QtCore import *
 
 from helperWindow import *
+import snake
 
 # Name of the application, organization that created the application and current version of the application
 applicationName = 'Active Contours Helper Window'

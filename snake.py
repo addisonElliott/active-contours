@@ -1,11 +1,13 @@
+import numpy as np
+import scipy.linalg
+import scipy.ndimage
 import skimage
 import skimage.filters
-import numpy as np
-import scipy.ndimage
+import scipy.interpolate
 
-def snake(image, initialContour, edgeImage=None, alpha=0.01, beta=0.1, wLine=0, wEdge=1, gamma=0.01,
-          maxIterations=2500):
 
+def kassSnake(image, initialContour, edgeImage=None, alpha=0.01, beta=0.1, wLine=0, wEdge=1, gamma=0.01,
+              maxPixelMove=None, maxIterations=2500):
     maxIterations = int(maxIterations)
     if maxIterations <= 0:
         raise ValueError('maxIterations should be greater than 0.')
@@ -40,12 +42,12 @@ def snake(image, initialContour, edgeImage=None, alpha=0.01, beta=0.1, wLine=0, 
     else:
         externalEnergy = wLine * image + wEdge * edgeImage
 
-    # TODO Determine if interpolation for smoothness is necessary
-    # Interpolate for smoothness:
-    # intp = RectBivariateSpline(np.arange(img.shape[1]),
-    #                            np.arange(img.shape[0]),
-    #                            img.T, kx=2, ky=2, s=0)
-    #
+    # Take external energy array and perform interpolation over the 2D grid
+    # If a fractional x or y is requested, then it will interpolate between the intensity values surrounding the point
+    # This is an object that can be given an array of points repeatedly
+    externalEnergyInterpolation = scipy.interpolate.RectBivariateSpline(np.arange(externalEnergy.shape[1]),
+                                                                        np.arange(externalEnergy.shape[0]),
+                                                                        externalEnergy.T, kx=2, ky=2, s=0)
 
     # Split initial contour into x's and y's
     x, y = initialContour[:, 0].astype(float), initialContour[:, 1].astype(float)
@@ -57,45 +59,123 @@ def snake(image, initialContour, edgeImage=None, alpha=0.01, beta=0.1, wLine=0, 
     previousY = np.empty((convergenceOrder, len(y)))
 
     # Build snake shape matrix for Euler equation
+    # This matrix is used to calculate the internal energy in the snake
+    # This matrix can be obtained from Equation 14 in Appendix A from Kass paper (1988)
+    # r is the v_{i} components grouped together
+    # q is the v_{i-1} components grouped together (and v_{i+1} components are the same)
+    # p is the v_{i-2} components grouped together (and v_{i+2} components are the same)
     n = len(x)
-    a = np.roll(np.eye(n), -1, axis=0) + \
-        np.roll(np.eye(n), -1, axis=1) - \
-        2 * np.eye(n)  # second order derivative, central difference
-    b = np.roll(np.eye(n), -2, axis=0) + \
-        np.roll(np.eye(n), -2, axis=1) - \
-        4 * np.roll(np.eye(n), -1, axis=0) - \
-        4 * np.roll(np.eye(n), -1, axis=1) + \
-        6 * np.eye(n)  # fourth order derivative, central difference
-    A = -alpha * a + beta * b
+    r = 2 * alpha + 6 * beta
+    q = -alpha - 4 * beta
+    p = beta
 
-    # Impose boundary conditions different from periodic:
-    sfixed = False
-    if bc.startswith('fixed'):
-        A[0, :] = 0
-        A[1, :] = 0
-        A[1, :3] = [1, -2, 1]
-        sfixed = True
-    efixed = False
-    if bc.endswith('fixed'):
-        A[-1, :] = 0
-        A[-2, :] = 0
-        A[-2, -3:] = [1, -2, 1]
-        efixed = True
-    sfree = False
-    if bc.startswith('free'):
-        A[0, :] = 0
-        A[0, :3] = [1, -2, 1]
-        A[1, :] = 0
-        A[1, :4] = [-1, 3, -3, 1]
-        sfree = True
-    efree = False
-    if bc.endswith('free'):
-        A[-1, :] = 0
-        A[-1, -3:] = [1, -2, 1]
-        A[-2, :] = 0
-        A[-2, -4:] = [-1, 3, -3, 1]
-        efree = True
+    A = r * np.eye(n) + \
+        q * (np.roll(np.eye(n), -1, axis=0) + np.roll(np.eye(n), -1, axis=1)) + \
+        p * (np.roll(np.eye(n), -2, axis=0) + np.roll(np.eye(n), -2, axis=1))
 
-    # Only one inversion is needed for implicit spline energy minimization:
-    inv = scipy.linalg.inv(A + gamma * np.eye(n))
-    pass
+    # TODO Impose boundary conditions, fixed or free instead of periodic
+    # # Impose boundary conditions different from periodic:
+    # sfixed = False
+    # if bc.startswith('fixed'):
+    #     A[0, :] = 0
+    #     A[1, :] = 0
+    #     A[1, :3] = [1, -2, 1]
+    #     sfixed = True
+    # efixed = False
+    # if bc.endswith('fixed'):
+    #     A[-1, :] = 0
+    #     A[-2, :] = 0
+    #     A[-2, -3:] = [1, -2, 1]
+    #     efixed = True
+    # sfree = False
+    # if bc.startswith('free'):
+    #     A[0, :] = 0
+    #     A[0, :3] = [1, -2, 1]
+    #     A[1, :] = 0
+    #     A[1, :4] = [-1, 3, -3, 1]
+    #     sfree = True
+    # efree = False
+    # if bc.endswith('free'):
+    #     A[-1, :] = 0
+    #     A[-1, -3:] = [1, -2, 1]
+    #     A[-2, :] = 0
+    #     A[-2, -4:] = [-1, 3, -3, 1]
+    #     efree = True
+
+    # TODO Cite papers better here
+
+    # Invert matrix once since alpha, beta and gamma are constants
+    # See equation 19 and 20 in Appendix A of Kass's paper
+    AInv = scipy.linalg.inv(A + gamma * np.eye(n))
+
+    for i in range(maxIterations):
+        # Calculate the gradient in the x/y direction of the external energy
+        fx = externalEnergyInterpolation(x, y, dx=1, grid=False)
+        fy = externalEnergyInterpolation(x, y, dy=1, grid=False)
+
+        # TODO Figure out the purpose of this
+        # if sfixed:
+        #     fx[0] = 0
+        #     fy[0] = 0
+        # if efixed:
+        #     fx[-1] = 0
+        #     fy[-1] = 0
+        # if sfree:
+        #     fx[0] *= 2
+        #     fy[0] *= 2
+        # if efree:
+        #     fx[-1] *= 2
+        #     fy[-1] *= 2
+
+        # Compute new x and y contour
+        # See Equation 19 and 20 in Appendix A of Kass's paper
+        xNew = np.dot(AInv, gamma * x + fx)
+        yNew = np.dot(AInv, gamma * y + fy)
+
+        # Maximum pixel move sets a cap on the maximum amount of pixels that one step can take.
+        # This is useful if one needs to prevent the snake from jumping past the location minimum one desires.
+        # In many cases, it is better to leave it off to increase the speed of the algorithm
+
+        # Calculated by getting the x and y delta from the new points to previous points
+        # Then get the angle of change and apply maxPixelMove magnitude
+        # Otherwise, if no maximum pixel move is set then set the x/y to be xNew/yNew
+        if maxPixelMove:
+            dx = maxPixelMove * np.tanh(xNew - x)
+            dy = maxPixelMove * np.tanh(yNew - y)
+
+            x += dx
+            y += dy
+        else:
+            x = xNew
+            y = yNew
+
+        # TODO Figure this out
+        # if sfixed:
+        #     dx[0] = 0
+        #     dy[0] = 0
+        # if efixed:
+        #     dx[-1] = 0
+        #     dy[-1] = 0
+
+        # j is variable that loops around from 0 to the convergence order. This is used to save the previous value
+        # Every x values where x is the convergence order, the distance XXX TODO Finish this
+        j = i % (convergenceOrder + 1)
+
+        if j < convergenceOrder:
+            previousX[j, :] = x
+            previousY[j, :] = y
+        else:
+            # np.abs(previousX - x[None, :]) + np.abs(previousY - y[None, :])
+            pass
+
+        # # Convergence criteria needs to compare to a number of previous
+        # # configurations since oscillations can occur.
+        # j = i % (convergence_order + 1)
+        # if j < convergence_order:
+        #     xsave[j, :] = x
+        #     ysave[j, :] = y
+        # else:
+        #     dist = np.min(np.max(np.abs(xsave - x[None, :]) +
+        #                          np.abs(ysave - y[None, :]), 1))
+        #     if dist < convergence:
+        #         break
