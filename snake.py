@@ -31,6 +31,9 @@ def kassSnake(image, initialContour, edgeImage=None, alpha=0.01, beta=0.1, wLine
         # edges which should return a small edge
         edgeImage = np.sqrt(scipy.ndimage.sobel(image, axis=0, mode='reflect') ** 2 +
                             scipy.ndimage.sobel(image, axis=1, mode='reflect') ** 2)
+
+        # Normalize the edge image between [0, 1]
+        edgeImage = (edgeImage - edgeImage.min()) / (edgeImage.max() - edgeImage.min())
     elif edgeImage is None:
         edgeImage = 0
 
@@ -176,5 +179,7 @@ def kassSnake(image, initialContour, edgeImage=None, alpha=0.01, beta=0.1, wLine
 
             if distance < convergence:
                 break
+
+    print('Finished at', i)
 
     return np.array([x, y]).T

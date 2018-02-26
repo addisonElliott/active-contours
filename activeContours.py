@@ -45,6 +45,14 @@ def runHelper():
     #
     # sys.exit(app.exec_())
 
+    # TODO Create function that allows real time tracking of snakes
+    # Include an update function to update the snake, then the class can also contain things such as
+    # changing input image, edge image, alpha, beta, gamma, etc and updating in real time so a user can
+    # see what changes it has.
+    # Also, I have found that it is extremely hard to tune these parameters for an image, so I think a good
+    # feature will be to have a loop option where it'll loop through a bunch of different parameters and save the
+    # output to a folder so that you can view them all later.
+
     # TODO Remove this and make a unit test eventually somehow
 
     # xx, yy = np.mgrid[:256, :256]
@@ -77,7 +85,7 @@ def runHelper():
     image = skimage.data.astronaut()
     image = skimage.color.rgb2gray(image)
 
-    image2 = skimage.filters.gaussian(image, 3.0)
+    image2 = skimage.filters.gaussian(image, 6.0)
 
     s = np.linspace(0, 2 * np.pi, 400)
     x = 220 + 100 * np.cos(s)
@@ -89,7 +97,7 @@ def runHelper():
     y = 100 + 100 * np.sin(s)
     init = np.array([x, y]).T
 
-    snakeContour = snake.kassSnake(image2, init, wEdge=3.0, alpha=1.0, beta=0.5, gamma=0.01, maxIterations=1000, maxPixelMove=1.0)
+    snakeContour = snake.kassSnake(image2, init, wEdge=1.0, alpha=0.5, beta=10, gamma=0.001, maxIterations=500, maxPixelMove=1.0, convergence=0.1)
 
     # snakeContour = skimage.segmentation.active_contour(image2,
     #                        init, alpha=0.015, beta=10, gamma=0.001)
