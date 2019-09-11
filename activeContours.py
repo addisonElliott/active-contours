@@ -97,7 +97,8 @@ def runHelper():
     y = 100 + 100 * np.sin(s)
     init = np.array([x, y]).T
 
-    snakeContour = snake.kassSnake(image2, init, wEdge=1.0, alpha=0.5, beta=10, gamma=0.001, maxIterations=500, maxPixelMove=1.0, convergence=0.1)
+    snakeContour = snake.kassSnake(image2, init, wLine=0, wEdge=1.0, alpha=0.1, beta=0.1, gamma=0.001,
+                                   maxIterations=5, maxPixelMove=None, convergence=0.1)
 
     # snakeContour = skimage.segmentation.active_contour(image2,
     #                        init, alpha=0.015, beta=10, gamma=0.001)
